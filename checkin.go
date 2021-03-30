@@ -1,13 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-
-	"github.com/tidwall/gjson"
 )
 
 var (
@@ -52,15 +50,18 @@ func main() {
 		req.Header.Set(k, v)
 	}
 	req.Header.Set("Cookie", os.Getenv("SMZDM_COOKIE"))
+	// req.Header.Set("Cookie", test_cookie)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Println("clirnt.Do()", err)
 		return
 	}
-	byteresp, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println(string(byteresp))
-	if gjson.GetBytes(byteresp, "error_code").Int() == 0 {
-		log.Println("敲到成功")
+	// byteresp, _ := ioutil.ReadAll(resp.Body)
+	var ct checkinType
+	if err := json.NewDecoder(resp.Body).Decode(&ct); err != nil {
+		log.Println(err)
+		return
 	}
+	fmt.Printf("%+v", ct)
 
 }

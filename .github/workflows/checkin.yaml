@@ -18,13 +18,13 @@ jobs:
     - 
       uses: actions/checkout@master
     - 
+      name: Run Env
+      env:
+        SMZDM_COOKIE: ${{ secrets.SMZDM_COOKIE }}
+        SERVERCHAN_SECRETKEY: ${{ secrets.SERVERCHAN_SECRETKEY }}
+    - 
       name: Go ENV
       uses: cedrickring/golang-action@1.6.0
       env:
         GO111MODULE: "on"
-    - 
-      name: Checkin
-      env:
-        SMZDM_COOKIE: ${{ secrets.SMZDM_COOKIE }}
-        SERVERCHAN_SECRETKEY: ${{ secrets.SERVERCHAN_SECRETKEY }}
-      run: go run checkin.go 
+      run: go run checkin.go

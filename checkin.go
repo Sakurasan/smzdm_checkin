@@ -51,7 +51,7 @@ func main() {
 	for k, v := range default_headers {
 		req.Header.Set(k, v)
 	}
-	req.Header.Set("Cookie", go.Getenv("SMZDM_COOKIE"))
+	req.Header.Set("Cookie", os.Getenv("SMZDM_COOKIE"))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Println("clirnt.Do()", err)

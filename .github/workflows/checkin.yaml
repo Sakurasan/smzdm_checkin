@@ -24,4 +24,6 @@ jobs:
         GO111MODULE: "on"
         SMZDM_COOKIE: ${{ secrets.SMZDM_COOKIE }}
         SERVERCHAN_SECRETKEY: ${{ secrets.SERVERCHAN_SECRETKEY }}
+    - 
+      name: Checkin
       run: go run checkin.go

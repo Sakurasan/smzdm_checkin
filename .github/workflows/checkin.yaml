@@ -27,4 +27,4 @@ jobs:
       env:
         SMZDM_COOKIE: ${{ secrets.SMZDM_COOKIE }}
         SERVERCHAN_SECRETKEY: ${{ secrets.SERVERCHAN_SECRETKEY }}
-        run: go run checkin.go 
+      run: go run checkin.go 

@@ -5,13 +5,17 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
+	"time"
 )
 
 var (
 	_url            = "https://zhiyou.smzdm.com/user/checkin/jsonp_checkin"
+	qmsgurl         = "https://qmsg.zendee.cn/send/"
 	smzdm_cookie    = ""
-	sendkey         = ""
+	qmsgkey         = ""
 	default_headers = map[string]string{
 		"Accept":     "*/*",
 		"Host":       "zhiyou.smzdm.com",
@@ -43,8 +47,14 @@ func initCheck() {
 	if os.Getenv("SMZDM_COOKIE") == "" {
 		panic("SMZDM_COOKIE 为空")
 	}
+	if os.Getenv("QMSGKEY") == "" {
+		fmt.Println("QMSGKEY 未设置，无失败通知")
+	} else {
+		qmsgkey = os.Getenv("QMSGKEY")
+	}
 }
 func main() {
+	initCheck()
 	req, _ := http.NewRequest("GET", _url, nil)
 	for k, v := range default_headers {
 		req.Header.Set(k, v)
@@ -58,10 +68,42 @@ func main() {
 	}
 	// byteresp, _ := ioutil.ReadAll(resp.Body)
 	var ct checkinType
-	if err := json.NewDecoder(resp.Body).Decode(&ct); err != nil {
-		log.Println(err)
+	var errs error
+	if errs = json.NewDecoder(resp.Body).Decode(&ct); errs != nil {
+		switch et := err.(type) {
+		case *json.UnmarshalTypeError:
+			log.Printf("UnmarshalTypeError: Value[%s] Type[%v]\n", et.Value, et.Type)
+		case *json.InvalidUnmarshalError:
+			log.Printf("InvalidUnmarshalError: Type[%v]\n", et.Type)
+		default:
+			log.Println(errs)
+		}
+	}
+
+	switch ct.ErrorCode {
+	case 0:
+		log.Println("张大妈签到完毕!", ct.ErrorCode, ct.Data.Slogan)
+	default:
+		s := fmt.Sprintf("张大妈签到失败 %s ErrCode:%d,ErrMsg:%s", time.Now().Format("2006-01-02"), ct.ErrorCode, ct.ErrorMsg)
+		log.Println(s)
+		Send(s)
+	}
+
+}
+
+func Send(msg string) {
+	if len(qmsgkey) < 5 {
+		log.Println("未设置Qmsg key，不发送通知")
 		return
 	}
-	fmt.Printf("%+v", ct)
+	v := url.Values{}
+	v.Add("msg", msg)
+	req, _ := http.NewRequest(http.MethodPost, qmsgurl+qmsgkey, strings.NewReader(v.Encode()))
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+	_, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Println(err)
+	}
 
 }

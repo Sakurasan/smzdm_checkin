@@ -20,10 +20,10 @@ jobs:
     - 
       name: Go ENV
       uses: cedrickring/golang-action/go1.11@1.6.0
+    - 
+      name: Checkin
       env:
         GO111MODULE: "on"
         SMZDM_COOKIE: ${{ secrets.SMZDM_COOKIE }}
         QMSGKEY: ${{ secrets.QMSGKEY }}
-    - 
-      name: Checkin
       run: go build -o checkin checkin.go && ./checkin

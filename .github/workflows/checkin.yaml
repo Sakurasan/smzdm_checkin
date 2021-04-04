@@ -23,7 +23,7 @@ jobs:
       env:
         GO111MODULE: "on"
         SMZDM_COOKIE: ${{ secrets.SMZDM_COOKIE }}
-        SERVERCHAN_SECRETKEY: ${{ secrets.SERVERCHAN_SECRETKEY }}
+        QMSGKEY: ${{ secrets.QMSGKEY }}
     - 
       name: Checkin
       run: go build -o checkin checkin.go && ./checkin

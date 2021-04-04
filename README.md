@@ -7,7 +7,7 @@
   - SMZDM_COOKIE
   - QmsgKey
   
-SMZDM_COOKIE获取： https://zhiyou.smzdm.com/user/ ，审查->Console-> copy(document.cookie)
+SMZDM_COOKIE获取： https://zhiyou.smzdm.com/user/ ，审查 -> Network->Doc->user/->Request Headers->Cookie
 
 QmsgKey获取: https://qmsg.zendee.cn/index.html
 

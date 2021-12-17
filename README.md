@@ -1,7 +1,9 @@
+
 # 什么值得买 签到
 
 ## 食用方法
 
+* 点个 ⭐️ ![GitHub Repo stars](https://img.shields.io/github/stars/Sakurasan/smzdm_checkin?style=social)
 * fork 本程序
 * Settings->secrets->New repository secret 添加
   - SMZDM_COOKIE

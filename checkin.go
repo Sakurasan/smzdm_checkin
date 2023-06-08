@@ -1,15 +1,22 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Sakurasan/to"
+	"github.com/duke-git/lancet/cryptor"
+	"github.com/duke-git/lancet/v2/random"
+	"github.com/tidwall/gjson"
 )
 
 const (
@@ -19,24 +26,17 @@ const (
 )
 
 var (
-	_url            = "https://zhiyou.smzdm.com/user/checkin/jsonp_checkin"
-	qmsgurl         = "https://qmsg.zendee.cn/send/"
-	smzdm_cookie    = ""
-	qmsgkey         = ""
-	default_headers = map[string]string{
-		"Accept":  "*/*",
-		"Host":    "zhiyou.smzdm.com",
-		"Referer": "https://www.smzdm.com/",
-		// "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
-		// "User-Agent": "smzdm_android_V8.7.8 rv:456 (Nexus 5;Android6.0.1;zh)smzdmapp",
-		"User-Agent": "smzdm/134.2 CFNetwork/1206 Darwin/20.1.0",
-	}
-
 	timez = map[Country]string{
 		Germany:      "Europe/Berlin",
 		UnitedStates: "America/Los_Angeles",
 		China:        "Asia/Shanghai",
 	}
+	qmsgurl          = "https://qmsg.zendee.cn/send/"
+	qmsgkey          = ""
+	requestUrl       = "https://user-api.smzdm.com/checkin"
+	Android_SIGN_KEY = "apr1$AwP!wRRT$gJ/q.X24poeBInlUJC"
+	IOS_SIGN_KEY     = "zok5JtAq3$QixaA%mncn*jGWlEpSL3E1"
+	cookie           = ""
 )
 
 type Country string
@@ -48,29 +48,167 @@ func (c Country) TimeZoneID() string {
 	return timez[China]
 }
 
-type checkinType struct {
-	ErrorCode int    `json:"error_code,omitempty"`
-	ErrorMsg  string `json:"error_msg,omitempty"`
-	Data      struct {
-		AddPoint                  int    `json:"add_point,omitempty"`
-		CheckinNum                string `json:"checkin_num,omitempty"`
-		Point                     int    `json:"point,omitempty"`
-		Exp                       int    `json:"exp,omitempty"`
-		Gold                      int    `json:"gold,omitempty"`
-		Prestige                  int    `json:"prestige,omitempty"`
-		Rank                      int    `json:"rank,omitempty"`
-		Slogan                    string `json:"slogan,omitempty"`
-		Cards                     string `json:"cards,omitempty"`
-		CanContract               int    `json:"can_contract,omitempty"`
-		ContinueCheckinDays       int    `json:"continue_checkin_days,omitempty"`
-		ContinueCheckinRewardShow bool   `json:"continue_checkin_reward_show,omitempty"`
-	} `json:"data,omitempty"`
+type SmzdmBot struct {
+	Cookies string
+	Sk      string
+	sess    string
+}
+
+func (bot *SmzdmBot) cookiesToDict() map[string]string {
+	re := regexp.MustCompile(`(.*?)=(.*?);`)
+	cookies := re.FindAllStringSubmatch(bot.Cookies, -1)
+	cookiesDict := make(map[string]string)
+	for _, v := range cookies {
+		cookiesDict[v[1]] = v[2]
+	}
+	return cookiesDict
+}
+
+func (bot *SmzdmBot) userAgent() string {
+	cookiesDict := bot.cookiesToDict()
+	switch cookiesDict["device_smzdm"] {
+	case "iphone":
+		return fmt.Sprintf("smzdm %s rv:%s (%s; iOS %s; zh_CN)/iphone_smzdmapp/%s",
+			cookiesDict["device_smzdm_version"],
+			cookiesDict["device_smzdm_version_code"],
+			cookiesDict["device_name"],
+			cookiesDict["device_system_version"],
+			cookiesDict["device_smzdm_version"],
+		)
+	case "android":
+		return fmt.Sprintf("smzdm_%s_V%s rv:%s (%s;%s;zh)smzdmapp",
+			cookiesDict["device_smzdm"],
+			cookiesDict["device_smzdm_version"],
+			cookiesDict["device_smzdm_version_code"],
+			cookiesDict["device_type"],
+			strings.Title(cookiesDict["device_smzdm"])+cookiesDict["device_system_version"],
+		)
+	default:
+		return "smzdm_android_V10.4.26 rv:866 (Redmi Note 3;Android10;zh)smzdmapp"
+	}
+}
+
+func (bot *SmzdmBot) headers() map[string]string {
+	headers := map[string]string{
+		"User-Agent":   bot.userAgent(),
+		"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+		"Request_Key":  random.RandNumeral(8) + to.String(time.Now().Unix()),
+		"Cookie":       bot.Cookies,
+	}
+	return headers
+}
+
+func (bot *SmzdmBot) webHeaders() map[string]string {
+	headers := map[string]string{
+		"Accept":          "*/*",
+		"Accept-Language": "en-US,en;q=0.9",
+		"Connection":      "keep-alive",
+		"Cookie":          bot.Cookies,
+		"Referer":         "https://m.smzdm.com/",
+		"User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36 Edg/112.0.1722.48",
+	}
+	return headers
+}
+
+func (bot *SmzdmBot) signData(data map[string]string) map[string]string {
+	var signStr string
+	keys := make([]string, len(data))
+	for k, _ := range data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		v := data[k]
+		if v != "" {
+			signStr += k + "=" + v + "&"
+		}
+	}
+	signStr += "key=" + IOS_SIGN_KEY
+	data["sign"] = strings.ToUpper(cryptor.Md5String(signStr))
+	return data
+}
+
+func (bot *SmzdmBot) Data(extraData map[string]string) map[string]string {
+	data := map[string]string{
+		"weixin":           "1",
+		"captcha":          "",
+		"basic_v":          bot.cookiesToDict()["basic_v"],
+		"f":                bot.cookiesToDict()["device_smzdm"],
+		"v":                bot.cookiesToDict()["device_smzdm_version"],
+		"touchstone_event": "",
+		"time":             strconv.FormatInt(time.Now().Unix(), 10),
+		// "token":            bot.cookiesToDict()["sess"],
+	}
+	if bot.Sk != "" {
+		data["sk"] = bot.Sk
+	}
+	if extraData != nil {
+		for k, v := range extraData {
+			data[k] = v
+		}
+	}
+	return bot.signData(data)
+}
+
+func (bot *SmzdmBot) Request(method, url string, params url.Values, extraData map[string]string) (resp *http.Response, err error) {
+	client := &http.Client{}
+	data := bot.Data(extraData)
+	keys := make([]string, len(data))
+	for k, _ := range data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var bodystr string
+	for _, k := range keys {
+		if data[k] != "" {
+			bodystr += "&" + k + "=" + data[k]
+		}
+
+	}
+	req, err := http.NewRequest(method, url, strings.NewReader(bodystr[1:]))
+	header := bot.headers()
+	for k, v := range header {
+		req.Header.Set(k, v)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if params != nil {
+		q := req.URL.Query()
+		for k, v := range params {
+			q.Add(k, v[0])
+		}
+		req.URL.RawQuery = q.Encode()
+	}
+	return client.Do(req)
+}
+
+func (bot *SmzdmBot) Checkin() {
+	log.Println("========== Checkin ==========")
+	resp, err := bot.Request(http.MethodPost, requestUrl, nil, nil)
+	if err != nil {
+		Send("签到失败:" + err.Error())
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		Send("签到失败:" + err.Error())
+	}
+	respstr := DecodeUnicode(body)
+	errcode := gjson.Get(respstr, "error_code").String()
+	errmsg := gjson.Get(respstr, "error_msg").String()
+	if errcode != "0" {
+		Send("签到失败:" + errmsg)
+	}
+	log.Println(respstr)
 }
 
 func initCheck() {
 	if os.Getenv("SMZDM_COOKIE") == "" {
 		panic("SMZDM_COOKIE 为空")
 	}
+	cookie = os.Getenv("SMZDM_COOKIE")
 	if os.Getenv("QMSGKEY") == "" {
 		fmt.Println("QMSGKEY 未设置，无失败通知")
 	} else {
@@ -79,46 +217,18 @@ func initCheck() {
 }
 func main() {
 	initCheck()
-	req, _ := http.NewRequest("GET", _url, nil)
-	for k, v := range default_headers {
-		req.Header.Set(k, v)
+	ltime, _ := time.LoadLocation(China.TimeZoneID())
+	fmt.Println("东八区时间:", time.Now().Local().In(ltime).Format("2006-01-02 15:04:05"))
+	bot := SmzdmBot{
+		Cookies: cookie,
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1 Edg/108.0.0.0")
-	req.Header.Set("Cookie", os.Getenv("SMZDM_COOKIE"))
-	// req.Header.Set("Cookie", test_cookie)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Println("clirnt.Do()", err)
-		return
-	}
-	// byteresp, _ := ioutil.ReadAll(resp.Body)
-	var ct checkinType
-	var errs error
-	if errs = json.NewDecoder(resp.Body).Decode(&ct); errs != nil && errs != io.EOF {
-		switch et := err.(type) {
-		case *json.UnmarshalTypeError:
-			log.Printf("UnmarshalTypeError: Value[%s] Type[%v]\n", et.Value, et.Type)
-		case *json.InvalidUnmarshalError:
-			log.Printf("InvalidUnmarshalError: Type[%v]\n", et.Type)
-		default:
-			log.Println(errs)
-		}
-	}
+	bot.Checkin()
 
-	switch ct.ErrorCode {
-	case 0:
-		ltime, _ := time.LoadLocation(China.TimeZoneID())
-		fmt.Println("东八区时间:", time.Now().Local().In(ltime).Format("2006-01-02 15:04:05"))
-		log.Println("张大妈签到完毕!", ct.ErrorCode, ct.Data.Slogan)
-		msg := fmt.Sprintf("\n⭐⭐⭐签到成功%s天⭐⭐⭐\n🏅🏅🏅金币[%d]\n🏅🏅🏅积分[%d]\n🏅🏅🏅经验[%d]\n🏅🏅🏅等级[%d]\n🏅🏅补签卡[%s]",
-			ct.Data.CheckinNum, ct.Data.Gold, ct.Data.Point, ct.Data.Exp, ct.Data.Rank, ct.Data.Cards)
-		log.Println(msg)
-	default:
-		s := fmt.Sprintf("张大妈签到失败 %s ErrCode:%d,ErrMsg:%s", time.Now().Format("2006-01-02"), ct.ErrorCode, ct.ErrorMsg)
-		log.Println(s)
-		Send("签到失败,请从浏览器手动签到一次,并更新cookies")
-	}
+}
 
+func DecodeUnicode(raw []byte) string {
+	str, _ := strconv.Unquote(strings.Replace(strconv.Quote(string(raw)), `\\u`, `\u`, -1))
+	return str
 }
 
 func Send(msg string) {

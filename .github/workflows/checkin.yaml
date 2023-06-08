@@ -15,13 +15,15 @@ jobs:
     name: run
     runs-on: ubuntu-latest
     steps:
-    - 
-      uses: actions/checkout@master
-    - 
-      name: Go ENV
-      uses: cedrickring/golang-action/go1.11@1.6.0
-    - 
-      name: Checkin
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Setup Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.19        
+
+    - name: Checkin
       env:
         GO111MODULE: "on"
         SMZDM_COOKIE: ${{ secrets.SMZDM_COOKIE }}

@@ -37,6 +37,13 @@ var (
 	Android_SIGN_KEY = "apr1$AwP!wRRT$gJ/q.X24poeBInlUJC"
 	IOS_SIGN_KEY     = "zok5JtAq3$QixaA%mncn*jGWlEpSL3E1"
 	cookie           = ""
+	default_data     = map[string]string{
+		"weixin":  "1",
+		"time":    strconv.FormatInt(time.Now().Unix(), 10),
+		"basic_v": "0",
+		"f":       "android",
+		"v":       "10.4.26",
+	}
 )
 
 type Country string
@@ -51,6 +58,7 @@ func (c Country) TimeZoneID() string {
 type SmzdmBot struct {
 	Cookies string
 	Sk      string
+	Token   string
 	sess    string
 }
 
@@ -124,7 +132,12 @@ func (bot *SmzdmBot) signData(data map[string]string) map[string]string {
 			signStr += k + "=" + v + "&"
 		}
 	}
-	signStr += "key=" + IOS_SIGN_KEY
+	if data["f"] == "iphone" {
+		signStr += "key=" + IOS_SIGN_KEY
+	} else {
+		signStr += "key=" + Android_SIGN_KEY
+	}
+
 	data["sign"] = strings.ToUpper(cryptor.Md5String(signStr))
 	return data
 }
@@ -138,7 +151,8 @@ func (bot *SmzdmBot) Data(extraData map[string]string) map[string]string {
 		"v":                bot.cookiesToDict()["device_smzdm_version"],
 		"touchstone_event": "",
 		"time":             strconv.FormatInt(time.Now().Unix(), 10),
-		// "token":            bot.cookiesToDict()["sess"],
+		"token":            bot.Token,
+		"sk":               bot.Sk,
 	}
 	if bot.Sk != "" {
 		data["sk"] = bot.Sk
@@ -203,6 +217,51 @@ func (bot *SmzdmBot) Checkin() {
 	}
 	log.Println(respstr)
 }
+func (bot *SmzdmBot) all_reward() {
+	log.Println("========== all_reward ==========")
+	resp, err := bot.Request(http.MethodPost, "https://user-api.smzdm.com/checkin/all_reward", nil, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	respstr := DecodeUnicode(body)
+	errcode := gjson.Get(respstr, "error_code").String()
+	errmsg := gjson.Get(respstr, "error_msg").String()
+	if errcode != "0" {
+		log.Println("没有奖励", errmsg, string(body))
+		return
+	}
+	log.Println(respstr)
+}
+
+func (bot *SmzdmBot) extra_reward() {
+	log.Println("========== extra_reward ==========")
+	resp, err := bot.Request(http.MethodPost, "https://user-api.smzdm.com/checkin/extra_reward", nil, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	respstr := DecodeUnicode(body)
+	errcode := gjson.Get(respstr, "error_code").String()
+	errmsg := gjson.Get(respstr, "error_msg").String()
+	if errcode != "0" {
+		log.Println(errmsg)
+		return
+	}
+	log.Println(respstr)
+}
 
 func initCheck() {
 	if os.Getenv("SMZDM_COOKIE") == "" {
@@ -223,6 +282,8 @@ func main() {
 		Cookies: cookie,
 	}
 	bot.Checkin()
+	bot.all_reward()
+	bot.extra_reward()
 
 }
 

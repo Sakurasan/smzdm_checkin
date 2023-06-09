@@ -10,7 +10,7 @@
   
 SMZDM_COOKIE获取： 手机抓包 https://user-api.smzdm.com/checkin
 
-QmsgKey获取: https://qmsg.zendee.cn/index.html
+QmsgKey获取: https://qmsg.zendee.cn/
 
 ---
 
